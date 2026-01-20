@@ -36,11 +36,11 @@ const long  gmtOffset_sec = 7200;
 const int   daylightOffset_sec = 0;
 
 // Weather and time variables
-float in_temperature = 0;
-float in_humidity = 0;
+int in_temperature = 0;
+int in_humidity = 0;
 
-String out_temperature = "0";
-String out_humidity = "0";
+int out_temperature = 0;
+int out_humidity = 0;
 String skyState = "Sun";
 
 char hour[3] = "0";
@@ -57,6 +57,7 @@ void updateInData();
 void updateOutData();
 void updateLocalTime();
 bool isItTimetoUpdate();
+void displayOnline();
 
 void setup() {
   Serial.begin(115200);
@@ -114,7 +115,7 @@ void setup() {
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
   updateInData();
-  // updateOutData();
+  updateOutData();
   updateLocalTime();
   display.clearDisplay();
   display.display();
@@ -122,14 +123,16 @@ void setup() {
 }
 
 void loop() {
+  display.clearDisplay();
   byte buttonState = digitalRead(BUTTON_PIN);
   updateInData();
 
   if(isConnected){
     if (buttonState == LOW || isItTimetoUpdate()) {
-    updateInData();
-    updateLocalTime();
+    updateOutData();
     }
+
+    displayOnline();
   }
   else{
     display.setCursor(16, 0);
@@ -165,6 +168,8 @@ void loop() {
   Serial.print(hour);
   Serial.print(" : ");
   Serial.print(minute);
+  
+  updateLocalTime();
   delay(1000);
 }
 
@@ -205,8 +210,8 @@ String httpGETRequest(const char* serverName) {
   return payload;
 }
 void updateInData(){
-  in_humidity = dht.readHumidity();
-  in_temperature = dht.readTemperature();
+  in_humidity = round(dht.readHumidity());
+  in_temperature = round(dht.readTemperature());
 
   // Check if any reads failed and exit early (to try again).
   if (isnan(in_humidity) || isnan(in_temperature)) {
@@ -228,10 +233,12 @@ void updateOutData(){
         Serial.println("Parsing input failed!");
         return;
       }
-    
+  
+      String str_out_temperature = JSON.stringify(myObject["main"]["temp"]);
+      String str_out_humidity = JSON.stringify(myObject["main"]["humidity"]);
 
-      out_temperature = JSON.stringify(myObject["main"]["temp"]);
-      out_humidity = JSON.stringify(myObject["main"]["humidity"]);
+      out_humidity = round(str_out_humidity.toDouble());
+      out_temperature = round(str_out_temperature.toDouble());
       skyState = JSON.stringify(myObject["weather"][0]["description"]);
     }
     else {
@@ -247,4 +254,47 @@ void updateLocalTime(){
   }
   strftime(hour,3, "%H", &timeinfo);
   strftime(minute,3, "%M", &timeinfo);
+}
+void displayOnline(){
+  display.setCursor(32, 0);
+  display.setTextSize(2);
+  display.print(hour);
+  if(dotsFlag) display.print(":");
+  else display.print(" ");
+  display.print(minute);
+
+  display.setCursor(0,0);
+  display.setTextSize(1);
+
+  if(String(skyState).indexOf("clear sky") >= 0) display.drawBitmap(0, 0, myBitmapclear_sky, 128, 64, 1);
+  else if(String(skyState).indexOf("few clouds") >= 0) {
+    Serial.println("displaying bitmap");
+    display.drawBitmap(0, 0, myBitmapfew_clouds, 128, 64, 1);
+  }
+  else if(String(skyState).indexOf("scattered clouds") >= 0) display.drawBitmap(0, 0, myBitmapscattered_clouds, 128, 64, 1);
+  else if(String(skyState).indexOf("broken clouds") >= 0) display.drawBitmap(0, 0, myBitmapbroken_clouds, 128, 64, 1);
+  else if(String(skyState).indexOf("shower rain") >= 0) display.drawBitmap(0, 0, myBitmapshower_rain, 128, 64, 1);
+  else if(String(skyState).indexOf("rain") >= 0) display.drawBitmap(0, 0, myBitmaprain, 128, 64, 1);
+  else if(String(skyState).indexOf("thunderstorm") >= 0) display.drawBitmap(0, 0, myBitmapthunderstorm, 128, 64, 1);
+  else if(String(skyState).indexOf("snow") >= 0) display.drawBitmap(0, 0, myBitmapsnow, 128, 64, 1);
+  else if(String(skyState).indexOf("mist") >= 0) display.drawBitmap(0, 0, myBitmapmist, 128, 64, 1);
+
+  display.setCursor(0, 16);
+  display.print("IN: ");
+  display.println();
+  display.print(in_temperature);
+  display.print(" C ");
+  display.print(in_humidity);
+  display.print(" %");
+  display.println();
+  display.print("OUT: ");
+  display.println();
+  display.print(out_temperature);
+  display.print(" C ");
+  display.print(out_humidity);
+  display.print(" %");
+
+  display.display();
+
+  dotsFlag = !dotsFlag;
 }
