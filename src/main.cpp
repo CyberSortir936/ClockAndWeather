@@ -6,6 +6,7 @@
 #include "../lib/credential.h"
 #include "Adafruit_SSD1306.h"
 #include "Adafruit_GFX.h"
+#include "time.h"
 
 #define BUTTON_PIN 4
 
@@ -27,7 +28,26 @@ String City = "Lviv";
 String CountryCode = "UA";
 String jsonBuffer;
 
+// NTP server config
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 7200;
+const int   daylightOffset_sec = 0;
+
+// Weather and time variables
+float in_temperature = 0;
+float in_humidity = 0;
+
+String out_temperature = "0";
+String out_humidity = "0";
+String skyState = "Sun";
+
+char hour[3] = "0";
+char minute[3] = "0";
+
 String httpGETRequest(const char* serverName);
+void updateInData();
+void updateOutData();
+void updateLocalTime();
 
 void setup() {
   Serial.begin(115200);
@@ -45,57 +65,46 @@ void setup() {
   Serial.println("");
   Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
+
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  updateInData();
+  updateOutData();
+  updateLocalTime();
 }
 
 void loop() {
   byte buttonState = digitalRead(BUTTON_PIN);
-  // Wait a few seconds between measurements.
-  delay(2000);
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
-  float f = dht.readTemperature(true);
-
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(h) || isnan(t) || isnan(f)) {
-    Serial.println(F("Failed to read from DHT sensor!"));
-    return;
-  }
-
-  Serial.print(F("Inside Humidity: "));
-  Serial.print(h);
-  Serial.print(F("%  Inside Temperature: "));
-  Serial.print(t);
-  Serial.print(F("°C "));
-  Serial.println();
-
 
   if (buttonState == LOW) {
-    // Check WiFi connection status
-    if(WiFi.status()== WL_CONNECTED){
-      String serverPath = "http://api.openweathermap.org/data/2.5/weather?q=" + City + "," + CountryCode + "&APPID=" + weather_api_key;
-      
-      jsonBuffer = httpGETRequest(serverPath.c_str());
-      //Serial.println(jsonBuffer);
-      JSONVar myObject = JSON.parse(jsonBuffer);
-  
-      // JSON.typeof(jsonVar) can be used to get the type of the var
-      if (JSON.typeof(myObject) == "undefined") {
-        Serial.println("Parsing input failed!");
-        return;
-      }
-    
-
-      Serial.print("Temperature: ");
-      Serial.println(myObject["main"]["temp"]);
-      Serial.print("Humidity: ");
-      Serial.println(myObject["main"]["humidity"]);
-      Serial.print("Sky: ");
-      Serial.println(myObject["weather"][0]["description"]);
-    }
-    else {
-      Serial.println("WiFi Disconnected");
-    }
+    updateInData();
+    updateOutData();
   }
+
+  Serial.println();
+  Serial.print("In Temp: ");
+  Serial.print(in_temperature);
+  Serial.println();
+  Serial.print("In Humidity: ");
+  Serial.print(in_humidity);
+  Serial.println();
+
+  Serial.print("Out Temp: ");
+  Serial.print(out_temperature);
+   Serial.println();
+  Serial.print("Out Humidity: ");
+  Serial.print(out_humidity);
+   Serial.println();
+  Serial.print("Sky State: ");
+  Serial.print(skyState);
+  Serial.println();
+
+  Serial.print(hour);
+  Serial.print(" : ");
+  Serial.print(minute);
+
+  updateLocalTime();
+  delay(1000);
 }
 
 
@@ -124,4 +133,48 @@ String httpGETRequest(const char* serverName) {
   http.end();
 
   return payload;
+}
+
+void updateInData(){
+  in_humidity = dht.readHumidity();
+  in_temperature = dht.readTemperature();
+
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(in_humidity) || isnan(in_temperature)) {
+    Serial.println(F("Failed to read from DHT sensor!"));
+    return;
+  }
+}
+void updateOutData(){
+  // Check WiFi connection status
+    if(WiFi.status()== WL_CONNECTED){
+      String serverPath = "http://api.openweathermap.org/data/2.5/weather?q=" + City + "," + CountryCode + "&APPID=" + weather_api_key + "&units=metric";
+      
+      jsonBuffer = httpGETRequest(serverPath.c_str());
+      //Serial.println(jsonBuffer);
+      JSONVar myObject = JSON.parse(jsonBuffer);
+  
+      // JSON.typeof(jsonVar) can be used to get the type of the var
+      if (JSON.typeof(myObject) == "undefined") {
+        Serial.println("Parsing input failed!");
+        return;
+      }
+    
+
+      out_temperature = JSON.stringify(myObject["main"]["temp"]);
+      out_humidity = JSON.stringify(myObject["main"]["humidity"]);
+      skyState = JSON.stringify(myObject["weather"][0]["description"]);
+    }
+    else {
+      Serial.println("WiFi Disconnected");
+    }
+}
+void updateLocalTime(){
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  strftime(hour,3, "%H", &timeinfo);
+  strftime(minute,3, "%M", &timeinfo);
 }
