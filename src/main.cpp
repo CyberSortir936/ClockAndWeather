@@ -2,11 +2,13 @@
 #include "DHT.h"
 #include "Arduino_JSON.h"
 #include <WiFi.h>
+#include <Wire.h>
 #include <HTTPClient.h>
 #include "../lib/credential.h"
 #include "Adafruit_SSD1306.h"
 #include "Adafruit_GFX.h"
 #include "time.h"
+#include "../lib/weather_bitmaps.h"
 
 #define BUTTON_PIN 4
 
@@ -44,23 +46,66 @@ String skyState = "Sun";
 char hour[3] = "0";
 char minute[3] = "0";
 
+bool isConnected = true;
+bool dotsFlag = true;
+char previousMinutes[3] = "0";
+unsigned long startTime = 0;
+unsigned long timerDelay = 10000;
+
 String httpGETRequest(const char* serverName);
 void updateInData();
 void updateOutData();
 void updateLocalTime();
+bool isItTimetoUpdate();
 
 void setup() {
   Serial.begin(115200);
   Serial.println(F("DHTxx test!"));
   dht.begin();
 
+  Wire.begin(SDA_PIN, SCL_PIN);
+
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  Wire.begin(SDA_PIN, SCL_PIN);
+
+  // Check if the OLED is actually on the bus
+  Wire.beginTransmission(0x3C);
+  if (Wire.endTransmission() != 0) {
+    Serial.println("OLED not found at 0x3C! Check wiring/power.");
+    // You can choose to loop here or skip OLED code
+  } else {
+    Serial.println("OLED found!");
+  }
+
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Connecting");
+  display.setCursor(10, 16);
 
   WiFi.begin(ssid, pass);
   Serial.println("Connecting");
+  startTime = millis();
   while(WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
+
+    display.print(".");
+    display.display();
+
+    unsigned long connectionTime = millis();
+
+    if((connectionTime - startTime) > timerDelay){
+      isConnected = false;
+      break;
+    }
   }
   Serial.println("");
   Serial.print("Connected to WiFi network with IP Address: ");
@@ -69,16 +114,34 @@ void setup() {
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
   updateInData();
-  updateOutData();
+  // updateOutData();
   updateLocalTime();
+  display.clearDisplay();
+  display.display();
+  delay(1000);
 }
 
 void loop() {
   byte buttonState = digitalRead(BUTTON_PIN);
+  updateInData();
 
-  if (buttonState == LOW) {
+  if(isConnected){
+    if (buttonState == LOW || isItTimetoUpdate()) {
     updateInData();
-    updateOutData();
+    updateLocalTime();
+    }
+  }
+  else{
+    display.setCursor(16, 0);
+    display.println("NO WIFI");
+    display.println();
+    display.print(in_temperature);
+    display.print(" C");
+
+    display.println();
+    display.print(in_humidity);
+    display.print(" %");
+    display.display();
   }
 
   Serial.println();
@@ -91,10 +154,10 @@ void loop() {
 
   Serial.print("Out Temp: ");
   Serial.print(out_temperature);
-   Serial.println();
+  Serial.println();
   Serial.print("Out Humidity: ");
   Serial.print(out_humidity);
-   Serial.println();
+  Serial.println();
   Serial.print("Sky State: ");
   Serial.print(skyState);
   Serial.println();
@@ -102,12 +165,19 @@ void loop() {
   Serial.print(hour);
   Serial.print(" : ");
   Serial.print(minute);
-
-  updateLocalTime();
   delay(1000);
 }
 
-
+// update outer weather info every 30 minutes
+bool isItTimetoUpdate(){
+  if(minute == "30" || minute == "00"){
+    if(minute != previousMinutes){
+      return true;
+    }
+    else return false;
+  }
+  else return false;
+}
 String httpGETRequest(const char* serverName) {
   WiFiClient client;
   HTTPClient http;
@@ -134,7 +204,6 @@ String httpGETRequest(const char* serverName) {
 
   return payload;
 }
-
 void updateInData(){
   in_humidity = dht.readHumidity();
   in_temperature = dht.readTemperature();
@@ -148,7 +217,7 @@ void updateInData(){
 void updateOutData(){
   // Check WiFi connection status
     if(WiFi.status()== WL_CONNECTED){
-      String serverPath = "http://api.openweathermap.org/data/2.5/weather?q=" + City + "," + CountryCode + "&APPID=" + weather_api_key + "&units=metric";
+      String serverPath = "http://api.openweathermap.org/data/2.5/weather?q=" + City + "," + CountryCode + "&APPID=" + weather_api + "&units=metric";
       
       jsonBuffer = httpGETRequest(serverPath.c_str());
       //Serial.println(jsonBuffer);
@@ -170,6 +239,7 @@ void updateOutData(){
     }
 }
 void updateLocalTime(){
+  
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
     Serial.println("Failed to obtain time");
