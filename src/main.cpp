@@ -41,7 +41,7 @@ int in_humidity = 0;
 
 int out_temperature = 0;
 int out_humidity = 0;
-String skyState = "Sun";
+int sky_code = 0;
 
 char hour[3] = "0";
 char minute[3] = "0";
@@ -162,7 +162,7 @@ void loop() {
   Serial.print(out_humidity);
   Serial.println();
   Serial.print("Sky State: ");
-  Serial.print(skyState);
+  Serial.print(sky_code);
   Serial.println();
 
   Serial.print(hour);
@@ -239,7 +239,7 @@ void updateOutData(){
 
       out_humidity = round(str_out_humidity.toDouble());
       out_temperature = round(str_out_temperature.toDouble());
-      skyState = JSON.stringify(myObject["weather"][0]["description"]);
+      sky_code = int(myObject["weather"][0]["id"]);
     }
     else {
       Serial.println("WiFi Disconnected");
@@ -266,18 +266,15 @@ void displayOnline(){
   display.setCursor(0,0);
   display.setTextSize(1);
 
-  if(String(skyState).indexOf("clear sky") >= 0) display.drawBitmap(0, 0, myBitmapclear_sky, 128, 64, 1);
-  else if(String(skyState).indexOf("few clouds") >= 0) {
-    Serial.println("displaying bitmap");
-    display.drawBitmap(0, 0, myBitmapfew_clouds, 128, 64, 1);
-  }
-  else if(String(skyState).indexOf("scattered clouds") >= 0) display.drawBitmap(0, 0, myBitmapscattered_clouds, 128, 64, 1);
-  else if(String(skyState).indexOf("broken clouds") >= 0) display.drawBitmap(0, 0, myBitmapbroken_clouds, 128, 64, 1);
-  else if(String(skyState).indexOf("shower rain") >= 0) display.drawBitmap(0, 0, myBitmapshower_rain, 128, 64, 1);
-  else if(String(skyState).indexOf("rain") >= 0) display.drawBitmap(0, 0, myBitmaprain, 128, 64, 1);
-  else if(String(skyState).indexOf("thunderstorm") >= 0) display.drawBitmap(0, 0, myBitmapthunderstorm, 128, 64, 1);
-  else if(String(skyState).indexOf("snow") >= 0) display.drawBitmap(0, 0, myBitmapsnow, 128, 64, 1);
-  else if(String(skyState).indexOf("mist") >= 0) display.drawBitmap(0, 0, myBitmapmist, 128, 64, 1);
+  if(sky_code == 800) display.drawBitmap(0, 0, myBitmapclear_sky, 128, 64, 1);
+  else if(sky_code == 801) display.drawBitmap(0, 0, myBitmapfew_clouds, 128, 64, 1);
+  else if(sky_code == 802) display.drawBitmap(0, 0, myBitmapscattered_clouds, 128, 64, 1);
+  else if(sky_code > 802) display.drawBitmap(0, 0, myBitmapbroken_clouds, 128, 64, 1);
+  else if((sky_code >= 520 && sky_code <= 531) || (sky_code >= 300 && sky_code <= 321)) display.drawBitmap(0, 0, myBitmapshower_rain, 128, 64, 1);
+  else if(sky_code >= 500 && sky_code <= 503) display.drawBitmap(0, 0, myBitmaprain, 128, 64, 1);
+  else if(sky_code >= 200 && sky_code <= 232) display.drawBitmap(0, 0, myBitmapthunderstorm, 128, 64, 1);
+  else if(sky_code == 511 || (sky_code >= 600 && sky_code <= 622)) display.drawBitmap(0, 0, myBitmapsnow, 128, 64, 1);
+  else if(sky_code >= 700 && sky_code <= 781) display.drawBitmap(0, 0, myBitmapmist, 128, 64, 1);
 
   display.setCursor(0, 16);
   display.print("IN: ");
